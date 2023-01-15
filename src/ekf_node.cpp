@@ -169,7 +169,7 @@ public:
             tf::StampedTransform(
                 transform_utm_T_odom,
                 _timestamp_last_callback,
-                "utm",
+                "map",
                 "odom"
             )
         );
