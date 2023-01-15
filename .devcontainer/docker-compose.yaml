@@ -1,0 +1,20 @@
+version: '3'
+services:
+  lrm-env:
+    image: lrm-env # RENAME TO LRM
+    privileged: true
+    environment:
+      - DISPLAY=$DISPLAY
+      - QT_X11_NO_MITSHM=1
+    volumes:
+      - ..:/home/workspace/src/carla-2023-localization-stack
+      - /tmp/.X11-unix:/tmp/.X11-unix
+      - /dev/snd:/dev/snd
+    command: bash
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

@@ -1,0 +1,45 @@
+FROM nvidia/cudagl:11.1-devel-ubuntu20.04
+ENV DEBIAN_FRONTEND=noninteractive
+RUN echo 'debconf debconf/frontend select Noninteractive' | debconf-set-selections
+
+# Update old nvidia GPG keys
+RUN rm /etc/apt/sources.list.d/cuda.list && \
+    rm /etc/apt/sources.list.d/nvidia-ml.list && \
+    apt-key del 7fa2af80 && \
+    apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu1804/x86_64/3bf863cc.pub &&\
+    apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/machine-learning/repos/ubuntu1804/x86_64/7fa2af80.pub
+
+# Install ROS and GUI dependencies
+RUN apt-get update && \
+    sh -c 'echo "deb http://packages.ros.org/ros/ubuntu focal main" > /etc/apt/sources.list.d/ros-latest.list' && \
+    apt install curl -y &&  \
+    curl -s https://raw.githubusercontent.com/ros/rosdistro/master/ros.asc | apt-key add - && \
+    apt-get update && \
+    apt-get install -y \
+        ros-noetic-desktop-full \
+        python3-rosinstall \
+        python3-rosinstall-generator \
+        python3-wstool \
+        build-essential \
+        libgtk-3-dev
+
+# Install additional libraries or tools as needed
+RUN apt-get install -y \
+    libqt5svg5 \
+    libqt5svg5-dev \
+    qtdeclarative5-dev \
+    python3-pip
+
+RUN apt-get install software-properties-common -y
+
+# Install GTSAM
+RUN add-apt-repository ppa:borglab/gtsam-release-4.0 && apt update && apt install libgtsam-dev libgtsam-unstable-dev -y
+
+# Other dependencies
+RUN apt install -y ros-noetic-rtabmap ros-noetic-rtabmap-ros && pip3 install utm
+
+RUN mkdir -p "/home/workspace/src"
+
+# Set the default command to run when starting the container
+WORKDIR "/home/workspace"
+CMD ["bash"]
