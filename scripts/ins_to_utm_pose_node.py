@@ -54,8 +54,8 @@ class FixToUTMPoseNode:
 
     # Covariance
     out_covariance = np.eye(6)
-    out_covariance[:3,:3] *= 10.0
-    out_covariance[3:,3:] *= 1.0
+    out_covariance[:3,:3] *= 5.0
+    out_covariance[3:,3:] *= 0.1
     out_msg.pose.covariance = tuple(out_covariance.flatten())
     self.publisher.publish(out_msg)
 
