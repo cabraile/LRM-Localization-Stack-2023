@@ -1,9 +1,11 @@
 #include<memory>
 #include<vector>
 
-#include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <nav_msgs/Odometry.h>
+#include <nav_msgs/Path.h>
 #include <geometry_msgs/Pose.h>
+#include <geometry_msgs/PoseStamped.h>
+#include <geometry_msgs/PoseWithCovarianceStamped.h>
 #include <tf/transform_broadcaster.h>
 #include <tf/transform_listener.h>
 
@@ -48,7 +50,6 @@ public:
         _visual_odom_T_base_link_prev = visual_odom_T_base_link;
 
         ROS_DEBUG("Received %ld visual odometry pose(s)", _count_global_pose_msgs_received);
-
         this->publish();
     }
 
@@ -142,6 +143,7 @@ public:
         // Initialize publishers
         _estimated_local_pose_pub = _node_handler->advertise<geometry_msgs::PoseWithCovarianceStamped>("/localization/ekf/local", 1000);
         _estimated_global_pose_pub = _node_handler->advertise<geometry_msgs::PoseWithCovarianceStamped>("/localization/ekf/global", 1000);
+        _estimated_local_trajectory_pub = _node_handler->advertise<nav_msgs::Path>("/localization/ekf/local_path", 1000);
 
         // Loop
         ROS_WARN("Started loop");
@@ -153,6 +155,8 @@ public:
         // Publish local frame pose
         gtsam::Pose3 base_link_origin_T_base_link = _ekf.getCurrentLocalState();
         geometry_msgs::PoseWithCovarianceStamped pose_local_msg;
+        pose_local_msg.header.stamp = _timestamp_last_callback;
+        pose_local_msg.header.frame_id = "odom";
         pose_local_msg.pose.pose = lrm::fromGTSAMPoseToROSPose(base_link_origin_T_base_link);
         _estimated_local_pose_pub.publish(pose_local_msg);
 
@@ -160,6 +164,8 @@ public:
         gtsam::Pose3 utm_T_base_link_origin = _ekf.getOriginToUTMTransform();
         gtsam::Pose3 utm_T_base_link = utm_T_base_link_origin * base_link_origin_T_base_link;
         geometry_msgs::PoseWithCovarianceStamped pose_global_msg;
+        pose_global_msg.header.stamp = _timestamp_last_callback;
+        pose_local_msg.header.frame_id = "map";
         pose_global_msg.pose.pose = lrm::fromGTSAMPoseToROSPose(utm_T_base_link);
         _estimated_global_pose_pub.publish(pose_global_msg);
 
@@ -184,6 +190,21 @@ public:
                 "base_link"
             )
         );
+
+        // Update trajectory
+        geometry_msgs::PoseStamped pose_local_current;
+        pose_local_current.header.frame_id = "odom";
+        pose_local_current.header.stamp = _timestamp_last_callback;
+        pose_local_current.pose = pose_local_msg.pose.pose;
+        _trajectory_local.push_back(pose_local_current);
+
+        // Publish trajectory
+        nav_msgs::Path trajectory_local;
+        trajectory_local.header.frame_id = "odom";
+        trajectory_local.header.stamp = _timestamp_last_callback;
+        trajectory_local.poses = _trajectory_local;
+        _estimated_local_trajectory_pub.publish(trajectory_local);
+
     }
 
 private:
@@ -195,6 +216,7 @@ private:
     
     ros::Publisher _estimated_local_pose_pub;
     ros::Publisher _estimated_global_pose_pub;
+    ros::Publisher _estimated_local_trajectory_pub;
 
     tf::TransformBroadcaster _tf_broadcaster;
 
@@ -218,7 +240,7 @@ private:
 
     // The least distance a global pose must be from the pose in the last correction in order to accept.
     // Prevents pose jumps from noisy GPS.
-    double _min_accepted_distance_between_corrections = 25.0;
+    double _min_accepted_distance_between_corrections = 3.0;
 
     // --------------
     // DIAGNOSTICS TOPICS
@@ -226,6 +248,7 @@ private:
 
     size_t _count_global_pose_msgs_received;
     size_t _count_visual_odom_msgs_received;
+    std::vector<geometry_msgs::PoseStamped> _trajectory_local;
 };
 
 int main(int argc, char * argv[])
