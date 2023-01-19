@@ -2,7 +2,6 @@
 from typing import Tuple
 import numpy as np
 
-import utm
 import rospy
 from message_filters import ApproximateTimeSynchronizer, Subscriber
 
@@ -10,6 +9,7 @@ from sensor_msgs.msg import NavSatFix, Imu
 from geometry_msgs.msg import PoseWithCovarianceStamped
 
 import math
+
 def geodesic_to_mercator(lat_ref : float, lon_ref : float, lat : float, lon : float) -> Tuple[float, float, float]:
   EARTH_RADIUS_EQUA = 6378137.0
   scale = math.cos(lat_ref * math.pi / 180.0)
@@ -22,14 +22,14 @@ def geodesic_to_mercator(lat_ref : float, lon_ref : float, lat : float, lon : fl
   x = mx - mx_ref
   y = my - my_ref
 
-  return [0, y, x]
+  return [0, y, -x]
 
 class FixToUTMPoseNode:
 
   def __init__(self) -> None:
     rospy.init_node("gps_to_odometry_node", anonymous=True)
     self.subscriber_gps = Subscriber("/carina/localization/nav_sat_fix", NavSatFix)
-    self.subscriber_imu = Subscriber("/carina/sensor/imu_corrected", Imu)
+    self.subscriber_imu = Subscriber("/carina/sensor/imu", Imu)
     self.publisher = rospy.Publisher("/carina/sensor/ins_utm_pose", PoseWithCovarianceStamped, queue_size=1000)
     self.time_synchronizer = ApproximateTimeSynchronizer([self.subscriber_gps, self.subscriber_imu], queue_size=100, slop=0.01)
     self.time_synchronizer.registerCallback(self.callback)
@@ -42,7 +42,7 @@ class FixToUTMPoseNode:
 
     # Position and orientation values
     #x,y, _,_ = utm.from_latlon(gps_msg.latitude, gps_msg.longitude)
-    _, y, x = geodesic_to_mercator(0.0, 0.0, gps_msg.latitude, gps_msg.longitude)
+    _, x, y = geodesic_to_mercator(0.0, 0.0, gps_msg.latitude, gps_msg.longitude)
     
     out_msg.pose.pose.position.x = x
     out_msg.pose.pose.position.y = y

@@ -30,10 +30,7 @@ private:
         Eigen::Vector3d r_vec_in = R.eulerAngles(0,1,2);
         double roll = r_vec_in(0);
         double pitch = r_vec_in(1);
-        double heading = -r_vec_in(2); 
-
-        // Process yaw: heading convetion
-        double yaw = M_PI_2 - heading;
+        double yaw = r_vec_in(2); 
         
         // Convert back to quaternion - z-last and x-first convention
         Eigen::AngleAxisd roll_angle( roll, Eigen::Vector3d::UnitX() );
