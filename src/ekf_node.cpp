@@ -240,7 +240,7 @@ private:
 
     // The least distance a global pose must be from the pose in the last correction in order to accept.
     // Prevents pose jumps from noisy GPS.
-    double _min_accepted_distance_between_corrections = 3.0;
+    double _min_accepted_distance_between_corrections = 0.0;
 
     // --------------
     // DIAGNOSTICS TOPICS
