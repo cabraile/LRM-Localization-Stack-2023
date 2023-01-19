@@ -36,7 +36,7 @@ RUN apt-get install software-properties-common -y
 RUN add-apt-repository ppa:borglab/gtsam-release-4.0 && apt update && apt install libgtsam-dev libgtsam-unstable-dev -y
 
 # Other dependencies
-RUN apt install -y ros-noetic-rtabmap ros-noetic-rtabmap-ros && pip3 install utm
+RUN apt install -y ros-noetic-rtabmap ros-noetic-rtabmap-ros && pip3 install utm scipy
 
 RUN mkdir -p "/home/workspace/src"
 
