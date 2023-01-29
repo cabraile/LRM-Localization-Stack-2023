@@ -152,6 +152,11 @@ public:
 
     void publish()
     {
+        // Avoids annoying "REPEATED_TF" messages.
+        if ( (_timestamp_last_callback - _timestamp_last_published).toSec() < 0.001 )
+        {
+            return ;
+        }
         // Publish local frame pose
         gtsam::Pose3 base_link_origin_T_base_link = _ekf.getCurrentLocalState();
         geometry_msgs::PoseWithCovarianceStamped pose_local_msg;
@@ -205,6 +210,7 @@ public:
         trajectory_local.poses = _trajectory_local;
         _estimated_local_trajectory_pub.publish(trajectory_local);
 
+        _timestamp_last_published = _timestamp_last_callback;
     }
 
 private:
@@ -225,6 +231,7 @@ private:
     // --------------
 
     ros::Time _timestamp_last_callback;
+    ros::Time _timestamp_last_published;
 
     lrm::EKF _ekf;
 
