@@ -72,7 +72,14 @@ public:
         }
 
         // EKF prediction
-        _ekf.predict(visual_odom_T_base_link, diagonal_components_vector);
+        try 
+        {
+            _ekf.predict(visual_odom_T_base_link, diagonal_components_vector);
+        }
+        catch (const gtsam::IndeterminantLinearSystemException& ex) 
+        {
+            ROS_ERROR_STREAM("[ekf_node.cpp] IndeterminantLinearSystemException caught during EKF prediction: " << ex.what());
+        }
 
         // Update latest timestamp
         _timestamp_last_callback = odom_ptr->header.stamp;
@@ -148,7 +155,15 @@ public:
             }
         }
 
-        _ekf.update(utm_T_base_link, diagonal_components_vector);
+        try
+        {
+            _ekf.update(utm_T_base_link, diagonal_components_vector);
+        } 
+        catch (const gtsam::IndeterminantLinearSystemException& ex) 
+        {
+            ROS_ERROR_STREAM("[ekf_node.cpp] IndeterminantLinearSystemException caught during EKF update: " << ex.what());
+        }
+        
         _count_global_pose_msgs_received++;
         ROS_DEBUG("Received %ld global pose(s)", _count_global_pose_msgs_received);
         
