@@ -1,7 +1,7 @@
 <launch>
 
     <!-- Args -->
-    <arg name="publish_stereo_cloud" default="true"/>
+    <arg name="publish_stereo_cloud" default="false"/>
     <arg name="enable_rviz" default="true"/>
     <arg name="from_bag" default="true"/>
     
@@ -50,11 +50,13 @@
     </node>
 
     <!-- Fusion -->
-    <node pkg="lrm_localization_stack" type="ekf_node" name="ekf_node" output="screen"/>
+    <node pkg="lrm_localization_stack" type="ekf_node" name="ekf_node" output="screen">
+        <rosparam file="$(find lrm_localization_stack)/config/ekf.yaml"/>
+    </node>
 
     <!-- Maintenance -->
     <node pkg="lrm_localization_stack" type="groundtruth_comparison_node.py" name="groundtruth_comparison_node" output="screen"/>
-    <node pkg="rosbag" type="play" name="player" args="--rate 0.3 --clock $(find lrm_localization_stack)/data/with_gt_curve_2023-01-17-12-28-28.bag --pause" if="$(arg from_bag)"/>
+    <node pkg="rosbag" type="play" name="player" args="--rate 0.1 --clock $(find lrm_localization_stack)/data/filtered_2023-01-17-12-28-28.bag --pause" if="$(arg from_bag)"/>
     <node type="rviz" name="rviz" pkg="rviz" args="-d $(find lrm_localization_stack)/config/localization.rviz" if="$(arg enable_rviz)" output="screen"/>
 
 </launch>
