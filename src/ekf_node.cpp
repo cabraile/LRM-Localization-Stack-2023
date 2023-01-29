@@ -12,6 +12,17 @@
 #include "localization_stack/ekf.h"
 #include "localization_stack/conversions.h"
 
+bool areCovarianceDiagonalValuesValid(const gtsam::Vector & diagonal_values, double max_diagonal_value = 1e2)
+{
+    // Check if all values are positive and not too close from zero
+    bool all_positive = (diagonal_values.array() > 1e-8).all();
+
+    // Check if all of them are lower than the maximum diagonal value
+    bool all_bounded = (diagonal_values.array() <= max_diagonal_value).all();
+
+    return (all_positive && all_bounded);
+}
+
 class EKFNode
 {
 
@@ -19,6 +30,7 @@ public:
     EKFNode()
     {
         _node_handler = std::shared_ptr<ros::NodeHandle>(new ros::NodeHandle("~"));
+        
         _count_global_pose_msgs_received = 0;
         _count_visual_odom_msgs_received = 0;
     }
@@ -35,18 +47,42 @@ public:
             diagonal_components_vector(i) = odom_ptr->pose.covariance[7 * i];
         }
 
-        // Update latest timestamp
-        _timestamp_last_callback = odom_ptr->header.stamp;
+        // Outlier rejection by covariance
+        bool accept_by_covariance = areCovarianceDiagonalValuesValid(diagonal_components_vector, _max_acceptable_covariance_diagonal_value_visual_odom_pose);
+        if(!accept_by_covariance)
+        {
+            ROS_ERROR("[ekf_node.cpp] Dropped odometry pose due to invalid covariance.");
+            return ;
+        }
+
+        // Outlier rejection by position jumps
+        double translated_distance = 0.0;
+        if (_count_visual_odom_msgs_received > 0)
+        {
+            gtsam::Pose3 between_pose = _visual_odom_T_base_link_prev.inverse() * visual_odom_T_base_link;
+            translated_distance = between_pose.translation().norm();
+            double time_delta = (odom_ptr->header.stamp - _timestamp_last_accepted_odom).toSec();
+            double velocity_m_s = translated_distance / time_delta;
+            double velocity_kmph = velocity_m_s * 3.6;
+            if (velocity_kmph > _max_vehicle_velocity_kmph)
+            {
+                ROS_ERROR("[ekf_node.cpp] Dropped odometry message due to position jump.");
+                ROS_ERROR_STREAM("[ekf_node.cpp] Odometry jump speed: " << velocity_m_s << " meters/second");
+            }
+        }
 
         // EKF prediction
         _ekf.predict(visual_odom_T_base_link, diagonal_components_vector);
+
+        // Update latest timestamp
+        _timestamp_last_callback = odom_ptr->header.stamp;
+        _timestamp_last_accepted_odom = odom_ptr->header.stamp;
 
         // Update control attributes
         _count_visual_odom_msgs_received++;
 
         // Update the distance from the last update
-        gtsam::Pose3 between_pose = _visual_odom_T_base_link_prev.inverse() * visual_odom_T_base_link;
-        _distance_since_last_update += between_pose.translation().norm();
+        _distance_since_last_update += translated_distance;
         _visual_odom_T_base_link_prev = visual_odom_T_base_link;
 
         ROS_DEBUG("Received %ld visual odometry pose(s)", _count_global_pose_msgs_received);
@@ -88,12 +124,38 @@ public:
             return ;
         }
 
+        // Outlier rejection by covariance
+        bool accept_by_covariance = areCovarianceDiagonalValuesValid(diagonal_components_vector, _max_acceptable_covariance_diagonal_value_global_pose);
+        if(!accept_by_covariance)
+        {
+            ROS_ERROR("[ekf_node.cpp] Dropped global pose due to invalid covariance.");
+            return ;
+        }
+
+        // Outlier rejection by position jumps
+        double translated_distance = 0.0;
+        if (_count_visual_odom_msgs_received > 0)
+        {
+            gtsam::Pose3 between_pose = _utm_T_base_link_prev.inverse() * utm_T_base_link;
+            translated_distance = between_pose.translation().norm();
+            double time_delta = (pose_ptr->header.stamp - _timestamp_last_accepted_global_pose).toSec();
+            double velocity_m_s = translated_distance / time_delta;
+            double velocity_kmph = velocity_m_s * 3.6;
+            if (velocity_kmph > _max_vehicle_velocity_kmph)
+            {
+                ROS_ERROR("[ekf_node.cpp] Dropped global pose message due to position jump.");
+                ROS_ERROR_STREAM("[ekf_node.cpp] Global pose jump speed: " << velocity_m_s << " meters/second");
+            }
+        }
+
         _ekf.update(utm_T_base_link, diagonal_components_vector);
         _count_global_pose_msgs_received++;
         ROS_DEBUG("Received %ld global pose(s)", _count_global_pose_msgs_received);
         
         // Update control variables
+        _utm_T_base_link_prev = utm_T_base_link;
         _timestamp_last_callback = pose_ptr->header.stamp;
+        _timestamp_last_accepted_global_pose = pose_ptr->header.stamp;
         _distance_since_last_update = 0.0;
 
         this->publish();
@@ -231,6 +293,8 @@ private:
     // --------------
 
     ros::Time _timestamp_last_callback;
+    ros::Time _timestamp_last_accepted_odom;
+    ros::Time _timestamp_last_accepted_global_pose;
     ros::Time _timestamp_last_published;
 
     lrm::EKF _ekf;
@@ -240,14 +304,30 @@ private:
     gtsam::Pose3 _base_link_T_cam;
     gtsam::Pose3 _cam_T_base_link;
 
+    // Last visual odometry pose (transform of the base_link w.r.t. the odometry origin)
     gtsam::Pose3 _visual_odom_T_base_link_prev;
+    // Last received GPS pose w.r.t. the world
+    gtsam::Pose3 _utm_T_base_link_prev;
 
     // Distance the vehicle moved (estimated from the odometry) between global poses
     double _distance_since_last_update;
 
+    // --------------
+    // INPUT FILTERING
+    // --------------
+
     // The least distance a global pose must be from the pose in the last correction in order to accept.
     // Prevents pose jumps from noisy GPS.
-    double _min_accepted_distance_between_corrections = 0.0;
+    double _min_accepted_distance_between_corrections = 0.5;
+
+    // Refuses odometry poses which have covariance values larger than this.
+    double _max_acceptable_covariance_diagonal_value_visual_odom_pose = 1.0;
+
+    // Refuses global poses which have covariance values larger than this.
+    double _max_acceptable_covariance_diagonal_value_global_pose = 1e2;
+
+    // Max vehicle velocity in km/h. Used for rejecting outlier poses.
+    double _max_vehicle_velocity_kmph = 110.0;
 
     // --------------
     // DIAGNOSTICS TOPICS
