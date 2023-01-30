@@ -11,10 +11,12 @@
 
 #include "localization_stack/ekf.h"
 #include "localization_stack/conversions.h"
+#include <std_msgs/Bool.h>
 
 // @brief Check if the diagonals used for a covariance matrix are valid (positive, not zero and not too big).
 bool areCovarianceDiagonalValuesValid(const gtsam::Vector & diagonal_values, double max_diagonal_value = 1e2)
 {
+    gtsam::print(diagonal_values);
     // Check if all values are positive and not too close from zero
     bool all_positive = (diagonal_values.array() > 1e-8).all();
 
@@ -193,6 +195,21 @@ public:
         this->publish();
     }
 
+    void shutdown_cb(const std_msgs::Bool::ConstPtr &msg){
+        if (msg->data){
+          
+          this->global_pose_sub.shutdown();
+          this->shutdown_sub.shutdown();
+          this->visual_odometry_pose_sub.shutdown();
+          this->_estimated_local_pose_pub.shutdown();
+          this->_estimated_global_pose_pub.shutdown();
+          this->_estimated_local_trajectory_pub.shutdown();
+
+          std::cout<<"Bye!"<<std::endl;
+          ros::shutdown();
+        }
+    }
+
     void spin()
     {
         tf::TransformListener tf_listener;
@@ -224,7 +241,7 @@ public:
         _cam_T_base_link = _base_link_T_cam.inverse();
 
         // Wait first global pose message
-        ros::Subscriber global_pose_sub = _node_handler->subscribe("/carina/sensor/ins_utm_pose", 10, &EKFNode::callbackGlobalPoseMessage, this);
+        global_pose_sub = _node_handler->subscribe("/carina/sensor/ins_utm_pose", 10, &EKFNode::callbackGlobalPoseMessage, this);
         ROS_INFO("Waiting for global pose");
         while(!_ekf.isInitialized())
         {
@@ -232,13 +249,15 @@ public:
         }
 
         // Subscribe to the odometry topic
-        ros::Subscriber visual_odometry_pose_sub = _node_handler->subscribe("/localization/odometry/visual", 10, &EKFNode::callbackVisualOdometryMessage, this);
+        visual_odometry_pose_sub = _node_handler->subscribe("/localization/odometry/visual", 10, &EKFNode::callbackVisualOdometryMessage, this);
 
         // Initialize publishers
         _estimated_local_pose_pub = _node_handler->advertise<geometry_msgs::PoseWithCovarianceStamped>("/localization/ekf/local", 1000);
         _estimated_global_pose_pub = _node_handler->advertise<geometry_msgs::PoseWithCovarianceStamped>("/localization/ekf/global", 1000);
         _estimated_local_trajectory_pub = _node_handler->advertise<nav_msgs::Path>("/localization/ekf/local_path", 1000);
 
+        // Subscribe to the shotdown topic
+        shutdown_sub = _node_handler->subscribe("/carina/vehicle/shutdown", 1, &EKFNode::shutdown_cb, this);
         // Loop
         ROS_WARN("Started loop");
         ros::spin();
@@ -317,6 +336,11 @@ private:
     ros::Publisher _estimated_local_pose_pub;
     ros::Publisher _estimated_global_pose_pub;
     ros::Publisher _estimated_local_trajectory_pub;
+
+
+    ros::Subscriber global_pose_sub;
+    ros::Subscriber visual_odometry_pose_sub;
+    ros::Subscriber shutdown_sub;
 
     tf::TransformBroadcaster _tf_broadcaster;
 

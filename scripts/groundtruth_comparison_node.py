@@ -8,6 +8,7 @@ import tf2_ros
 from message_filters import ApproximateTimeSynchronizer, Subscriber
 from std_msgs.msg import Float64
 from geometry_msgs.msg import PoseWithCovarianceStamped, Pose
+from std_msgs.msg import Bool
 
 def ros_pose_to_transformation_matrix(pose : Pose) -> np.ndarray:
     translation = np.array([pose.position.x, pose.position.y, pose.position.z])
@@ -36,6 +37,7 @@ class GroundtruthComparisonNode:
         self.publisher_absolute_rotational_error = rospy.Publisher("/localization/metrics/absolute_rotational_error_degrees", Float64, queue_size=1000)
         self.time_synchronizer = ApproximateTimeSynchronizer([self.subscriber_groundtruth, self.subscriber_estimations], queue_size=100, slop=0.01)
         self.time_synchronizer.registerCallback(self.callback)
+        self.shutdown_sub = rospy.Subscriber('/carina/vehicle/shutdown', Bool, self.shutdown_cb, queue_size=1)
 
     def wait_for_calibration_tf(self) -> None:
         # Load the latest TF available
@@ -93,6 +95,11 @@ class GroundtruthComparisonNode:
         absolute_rotational_error_msg.data = absolute_rotational_error
         self.publisher_absolute_rotational_error.publish(absolute_rotational_error_msg)
 
+    def shutdown_cb(self, msg):
+        if msg.data:
+            print ("Bye!")
+            rospy.signal_shutdown("finished route")
+            
     def spin(self) -> None:
         self.wait_for_calibration_tf()
         rospy.spin()

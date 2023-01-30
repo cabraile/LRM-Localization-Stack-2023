@@ -9,6 +9,7 @@ from sensor_msgs.msg import NavSatFix, Imu
 from geometry_msgs.msg import PoseWithCovarianceStamped
 
 import math
+from std_msgs.msg import Bool
 
 def geodesic_to_mercator(lat_ref : float, lon_ref : float, lat : float, lon : float) -> Tuple[float, float, float]:
   EARTH_RADIUS_EQUA = 6378137.0
@@ -33,6 +34,7 @@ class FixToUTMPoseNode:
     self.publisher = rospy.Publisher("/carina/sensor/ins_utm_pose", PoseWithCovarianceStamped, queue_size=1000)
     self.time_synchronizer = ApproximateTimeSynchronizer([self.subscriber_gps, self.subscriber_imu], queue_size=100, slop=0.01)
     self.time_synchronizer.registerCallback(self.callback)
+    self.shutdown_sub = rospy.Subscriber('/carina/vehicle/shutdown', Bool, self.shutdown_cb, queue_size=1)
 
   def callback(self, gps_msg : NavSatFix, imu_msg : Imu ) -> None:
     # Header
@@ -59,6 +61,11 @@ class FixToUTMPoseNode:
     out_msg.pose.covariance = tuple(out_covariance.flatten())
     self.publisher.publish(out_msg)
 
+  def shutdown_cb(self, msg):
+    if msg.data:
+      print ("Bye!")
+      rospy.signal_shutdown("finished route") 
+      
 if __name__ == "__main__":
   node = FixToUTMPoseNode()
   rospy.spin()

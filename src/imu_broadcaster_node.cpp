@@ -7,6 +7,7 @@
 #include <sensor_msgs/Imu.h>
 #include <geometry_msgs/Quaternion.h>
 #include <geometry_msgs/Point.h>
+#include <std_msgs/Bool.h>
 
 class IMUBroadcasterNode {
 
@@ -15,6 +16,7 @@ private:
     ros::Publisher pub_imu;
     ros::Publisher pub_diagnostics_euler_orientation_msg;
     std::string frame_id;
+    ros::Subscriber shutdown_sub;
 
     void imuCallback(const sensor_msgs::Imu::ConstPtr & msg) {
         // Get RPY from message
@@ -69,6 +71,18 @@ private:
         return ;
     }
 
+    void shutdown_cb(const std_msgs::Bool::ConstPtr &msg){
+        if (msg->data){
+          
+          sub_imu.shutdown();
+          shutdown_sub.shutdown();
+          pub_imu.shutdown();
+
+          std::cout<<"Bye!"<<std::endl;
+          ros::shutdown();
+        }
+    }
+    
 public:
 
     IMUBroadcasterNode(ros::NodeHandle &nh) {
@@ -77,6 +91,7 @@ public:
         this->sub_imu = nh.subscribe(rcv_imu_topic, 100, &IMUBroadcasterNode::imuCallback, this );
         this->pub_imu = nh.advertise<sensor_msgs::Imu>("/carina/sensor/imu_corrected", 100, false);
         this->pub_diagnostics_euler_orientation_msg = nh.advertise<geometry_msgs::Point>("/diagnostics/carina/sensors/imu/orientation_euler_xyz_deg", 100, false);
+        this->shutdown_sub = nh.subscribe("/carina/vehicle/shutdown", 1, &IMUBroadcasterNode::shutdown_cb, this);
         return ;
     }
 
