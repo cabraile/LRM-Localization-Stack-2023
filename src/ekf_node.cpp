@@ -16,7 +16,6 @@
 // @brief Check if the diagonals used for a covariance matrix are valid (positive, not zero and not too big).
 bool areCovarianceDiagonalValuesValid(const gtsam::Vector & diagonal_values, double max_diagonal_value = 1e2)
 {
-    gtsam::print(diagonal_values);
     // Check if all values are positive and not too close from zero
     bool all_positive = (diagonal_values.array() > 1e-8).all();
 
@@ -71,6 +70,10 @@ public:
         if(!accept_by_covariance)
         {
             ROS_ERROR("[ekf_node.cpp] Dropped odometry pose due to invalid covariance.");
+            for(size_t i = 0; i < 6; i++)
+            {
+                ROS_WARN_STREAM( "diagonal_components_vector["<< i <<"]"<<diagonal_components_vector(i));
+            }
             return ;
         }
 

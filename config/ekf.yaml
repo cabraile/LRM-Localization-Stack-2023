@@ -6,6 +6,6 @@ input_filter:
   min_accepted_distance_between_corrections: 0.5  # The least distance a global pose must be from the pose in the last correction in order to accept.
                                                   # Prevents pose jumps from noisy GPS.
                                                   # Also, if set to 0.0, this distance-based rejection is disabled.
-  max_acceptable_covariance_diagonal_value_visual_odom_pose: 1.0  # Refuses odometry poses which have covariance values larger than this.
+  max_acceptable_covariance_diagonal_value_visual_odom_pose: 100.0  # Refuses odometry poses which have covariance values larger than this.
   max_acceptable_covariance_diagonal_value_global_pose: 100.0     # Refuses global poses which have covariance values larger than this.
   max_input_poses_velocity_kmph: 110.0 # Do not accept poses that have velocities greater than this.
