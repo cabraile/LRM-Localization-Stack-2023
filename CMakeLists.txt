@@ -6,6 +6,8 @@ find_package(catkin REQUIRED COMPONENTS
     roscpp
     tf
     tf2_ros
+    pcl_conversions
+    pcl_ros
 )
 
 find_package(Eigen3 REQUIRED)
@@ -33,3 +35,14 @@ target_link_libraries(ekf_node
    ${catkin_LIBRARIES}
    gtsam
 )
+
+
+# Mapping Node
+#add_executable(mapping_node 
+#    src/mapping_node.cpp 
+#    src/localization_stack/conversions.cpp
+#)
+#target_link_libraries(mapping_node
+#   ${catkin_LIBRARIES}
+#   gtsam
+#)
