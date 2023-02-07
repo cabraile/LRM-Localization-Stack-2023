@@ -1,10 +1,11 @@
 #include <deque>
 #include <memory>
-
+#include <cmath>
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/point_cloud.h>
 #include <pcl/point_types.h>
 #include <pcl/filters/voxel_grid.h>
+#include <pcl/common/transforms.h>
 
 #include <gtsam/geometry/Pose3.h>
 
@@ -34,21 +35,19 @@ public:
     {
 
         // Load parameters
-        string _scans_topic = "";
-        string _odometry_topic = "/localization/odometry/visual";
+        _scans_topic = "/carina/sensor/lidar/front/point_cloud";
+        _odometry_topic = "/localization/odometry/visual";
 
         // Load node handler
         _node_handle_ptr = std::shared_ptr<ros::NodeHandle>(new ros::NodeHandle("~"));
-
-        // Instantiate publishers
-        _publisher_local_window = _node_handle_ptr->advertise<sensor_msgs::PointCloud2>("/mapping/maps/local", 1000);
     }
 
     void spin()
     {
+
+        ROS_DEBUG("[mapping_node.cpp] Waiting for TF");
         // Wait for static transform from the base_link frame to LiDAR
         tf::TransformListener tf_listener;
-        // Wait for LiDAR to base_link transform 
         tf::StampedTransform tf_base_link_T_lidar;
         bool flag_received_transforms = false;
         while(!flag_received_transforms)
@@ -67,12 +66,15 @@ public:
         _base_link_T_lidar = lrm::fromTFTransformToGTSAMPose(tf_base_link_T_lidar);
 
         // Instantiate synchronized subscribers
-        _subscriber_scan_ptr = std::shared_ptr<Subscriber<sensor_msgs::PointCloud2>>( new Subscriber<sensor_msgs::PointCloud2>( *_node_handle_ptr, _scans_topic, 10 ) );
-        _subscriber_odometry_ptr = std::shared_ptr<Subscriber<nav_msgs::Odometry>>( new Subscriber<nav_msgs::Odometry>( *_node_handle_ptr, _odometry_topic, 10 ) );
-        _message_synchronizer_ptr = std::shared_ptr<SyncT>( new SyncT(SyncPolicyT(10),*_subscriber_scan_ptr, *_subscriber_odometry_ptr) );
+        ROS_DEBUG("[mapping_node.cpp] Starting synchronized subscriber");
+        // Instantiate publishers
+        ros::Publisher publisher_local_window = _node_handle_ptr->advertise<sensor_msgs::PointCloud2>("/mapping/maps/local", 10);
+        ros::Subscriber subscriber_scan = _node_handle_ptr->subscribe(_scans_topic, 100, &MappingNode::callbackScan, this);
+        ros::Subscriber subscriber_odometry = _node_handle_ptr->subscribe(_odometry_topic, 100, &MappingNode::callbackOdometry, this);
 
         // Spin
-        ros::Rate rate(1);
+        ROS_DEBUG("[mapping_node.cpp] Started loop");
+        ros::Rate rate(50);
         while(ros::ok())
         {
             // Checks if the cloud can be published
@@ -81,10 +83,14 @@ public:
                 // Builds the local window
                 PointCloud<PointT>::Ptr local_window = this->buildLocalMap();
 
+                ROS_WARN("[mapping_node.cpp] Publishing");
                 // Publish
                 sensor_msgs::PointCloud2 local_window_msg;
-                pcl::toROSMsg(local_window, local_window_msg);
-                _publisher_local_window.publish(local_window_msg);
+                pcl::toROSMsg(*local_window, local_window_msg);
+                local_window_msg.header.frame_id = "velodyne";
+                local_window_msg.header.stamp = _timestamp_curr;
+                local_window_msg.header.seq = _total_scans_received;
+                publisher_local_window.publish(local_window_msg);
 
                 // Resets the condition counter
                 _count_callbacks_after_published = 0;
@@ -93,6 +99,7 @@ public:
             ros::spinOnce();
             rate.sleep();
         }
+
     }
 
     // @brief Registers the point clouds w.r.t. the last point cloud.
@@ -134,10 +141,10 @@ private:
     std::deque<std::pair<Pose3, PointCloud<PointT>::Ptr>> _cloud_pair_queue;
 
     // Maximum number of clouds for storing in the queue
-    int _max_clouds_queue = 10;
+    int _max_clouds_queue = 5;
 
     // Resolution in meters
-    float _downsample_resolution = 0.1f;
+    float _downsample_resolution = 0.05f;
 
     // Transform from the LiDAR to the base_link frame
     Pose3 _base_link_T_lidar;
@@ -148,33 +155,60 @@ private:
     //
     size_t _publish_every_N_callbacks = 3;
 
-    // 
+    size_t _total_scans_received = 0;
+
+    // ROS node handler
     std::shared_ptr< ros::NodeHandle > _node_handle_ptr;
 
+    // Timestamp of the last synchronized pair's point cloud.
+    ros::Time _timestamp_curr;
 
     string _scans_topic;
     string _odometry_topic;
 
-    // Declare: local point cloud publisher
-    ros::Publisher _publisher_local_window;
-
-    // Scan subscriber
-    std::shared_ptr< Subscriber<sensor_msgs::PointCloud2> > _subscriber_scan_ptr;
-
-    // Odometry subscriber
-    std::shared_ptr< Subscriber<nav_msgs::Odometry> > _subscriber_odometry_ptr;
-    
-    std::shared_ptr< SyncT > _message_synchronizer_ptr;
+    // Manual synchronization
+    sensor_msgs::PointCloud2 _last_scan_msg;
+    nav_msgs::Odometry _last_odom_msg;
 
     ////////////////////////
     // Callbacks
     ////////////////////////
 
-    void callbackSynchronizedScan(const sensor_msgs::PointCloud2::Ptr & scan_msg_ptr, const nav_msgs::Odometry::Ptr & odom_msg_ptr )
+    void callbackScan(const sensor_msgs::PointCloud2 & scan_msg)
+    {
+        float time_diff = abs( (scan_msg.header.stamp - _last_odom_msg.header.stamp).toSec() );
+        // Run the synchronized callback
+        if (time_diff < 1e-3)
+        {
+            this->callbackSynchronizedScan(scan_msg, _last_odom_msg);
+        }
+        // Store for later usage
+        else
+        {
+            _last_scan_msg = scan_msg;
+        }
+    }
+
+    void callbackOdometry(const nav_msgs::Odometry & odom_msg)
+    {
+        float time_diff = abs( (_last_scan_msg.header.stamp - odom_msg.header.stamp).toSec() );
+        // Run the synchronized callback
+        if (time_diff < 1e-3)
+        {
+            this->callbackSynchronizedScan(_last_scan_msg, odom_msg);
+        }
+        // Store for later usage
+        else
+        {   
+            _last_odom_msg = odom_msg;
+        }
+    }
+
+    void callbackSynchronizedScan(const sensor_msgs::PointCloud2 & scan_msg, const nav_msgs::Odometry & odom_msg )
     {
         // Convert the scan msg to a pcl::PointCloud<pcl::PointXYZI>
         PointCloud<PointT>::Ptr cloud(new PointCloud<PointT>);
-        pcl::fromROSMsg(*scan_msg_ptr, *cloud);
+        pcl::fromROSMsg(scan_msg, *cloud);
 
         // Downsample in a given resolution
         pcl::VoxelGrid<PointT> vg;
@@ -185,8 +219,8 @@ private:
         // Convert the odometry pose to a gtsam::Pose3
         Pose3 origin_T_base_link;
         origin_T_base_link = Pose3(
-            gtsam::Rot3::Quaternion(odom_msg_ptr->pose.pose.orientation.w, odom_msg_ptr->pose.pose.orientation.x, odom_msg_ptr->pose.pose.orientation.y, odom_msg_ptr->pose.pose.orientation.z),
-            gtsam::Point3(odom_msg_ptr->pose.pose.position.x, odom_msg_ptr->pose.pose.position.y, odom_msg_ptr->pose.pose.position.z)
+            gtsam::Rot3::Quaternion(odom_msg.pose.pose.orientation.w, odom_msg.pose.pose.orientation.x, odom_msg.pose.pose.orientation.y, odom_msg.pose.pose.orientation.z),
+            gtsam::Point3(odom_msg.pose.pose.position.x, odom_msg.pose.pose.position.y, odom_msg.pose.pose.position.z)
         );
 
         // Transform the pose to the LiDAR frame
@@ -199,8 +233,14 @@ private:
         }
         _cloud_pair_queue.push_back(std::make_pair(origin_T_lidar, cloud));
 
+        // Updates the timestamp
+        _timestamp_curr = scan_msg.header.stamp;
+
         // Increments the counter for publishing
         _count_callbacks_after_published++;
+
+        // Increments the number of scans received
+        _total_scans_received++;
     }
     
 

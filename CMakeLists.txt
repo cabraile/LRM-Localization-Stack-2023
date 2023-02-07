@@ -38,11 +38,11 @@ target_link_libraries(ekf_node
 
 
 # Mapping Node
-#add_executable(mapping_node 
-#    src/mapping_node.cpp 
-#    src/localization_stack/conversions.cpp
-#)
-#target_link_libraries(mapping_node
-#   ${catkin_LIBRARIES}
-#   gtsam
-#)
+add_executable(mapping_node 
+    src/mapping_node.cpp 
+    src/localization_stack/conversions.cpp
+)
+target_link_libraries(mapping_node
+   ${catkin_LIBRARIES}
+   gtsam
+)
