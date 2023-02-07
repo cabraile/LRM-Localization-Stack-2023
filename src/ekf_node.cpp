@@ -262,7 +262,7 @@ public:
         // Subscribe to the shotdown topic
         shutdown_sub = _node_handler->subscribe("/carina/vehicle/shutdown", 1, &EKFNode::shutdown_cb, this);
         // Loop
-        ROS_WARN("Started loop");
+        ROS_WARN("[ekf_node.cpp] Started loop");
         ros::spin();
     }
 
