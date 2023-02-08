@@ -1,0 +1,14 @@
+input:
+  topic_odometry: "/localization/odometry/visual"
+  topic_scan: "/carina/sensor/lidar/front/point_cloud"
+
+output:
+  map_local: "/mapping/maps/local"
+
+mapping:
+  max_clouds_queue: 5
+  downsample_resolution: 0.05
+
+communication:
+  min_synchronization_time_diff_sec: 0.001
+  publish_every_N_callbacks: 3

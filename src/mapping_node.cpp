@@ -33,13 +33,26 @@ class MappingNode
 public:
     MappingNode()
     {
-
-        // Load parameters
-        _scans_topic = "/carina/sensor/lidar/front/point_cloud";
-        _odometry_topic = "/localization/odometry/visual";
-
-        // Load node handler
         _node_handle_ptr = std::shared_ptr<ros::NodeHandle>(new ros::NodeHandle("~"));
+        this->loadROSParams();
+
+        _count_callbacks_after_published = 0;
+        _total_scans_received = 0;
+    }
+
+    void loadROSParams()
+    {
+        _node_handle_ptr->getParam("input/topic_scan",_scans_topic);
+        _node_handle_ptr->getParam("input/topic_odometry",_odometry_topic);
+        _node_handle_ptr->getParam("output/map_local",_out_map_local_topic);
+        _node_handle_ptr->getParam("mapping/max_clouds_queue",_max_clouds_queue);
+        _node_handle_ptr->getParam("mapping/downsample_resolution",_downsample_resolution);
+        _node_handle_ptr->getParam("communication/min_synchronization_time_diff_sec",_min_synchronization_time_diff_sec);
+        
+        // Auxiliary variable for loading size_t args
+        int aux;
+        _node_handle_ptr->getParam("communication/publish_every_N_callbacks",aux);
+        _publish_every_N_callbacks = aux;
     }
 
     void spin()
@@ -68,13 +81,12 @@ public:
         // Instantiate synchronized subscribers
         ROS_DEBUG("[mapping_node.cpp] Starting synchronized subscriber");
         // Instantiate publishers
-        ros::Publisher publisher_local_window = _node_handle_ptr->advertise<sensor_msgs::PointCloud2>("/mapping/maps/local", 10);
+        ros::Publisher publisher_local_window = _node_handle_ptr->advertise<sensor_msgs::PointCloud2>(_out_map_local_topic, 10);
         ros::Subscriber subscriber_scan = _node_handle_ptr->subscribe(_scans_topic, 100, &MappingNode::callbackScan, this);
         ros::Subscriber subscriber_odometry = _node_handle_ptr->subscribe(_odometry_topic, 100, &MappingNode::callbackOdometry, this);
 
         // Spin
         ROS_DEBUG("[mapping_node.cpp] Started loop");
-        ros::Rate rate(50);
         while(ros::ok())
         {
             // Checks if the cloud can be published
@@ -97,7 +109,6 @@ public:
             }
 
             ros::spinOnce();
-            rate.sleep();
         }
 
     }
@@ -141,21 +152,25 @@ private:
     std::deque<std::pair<Pose3, PointCloud<PointT>::Ptr>> _cloud_pair_queue;
 
     // Maximum number of clouds for storing in the queue
-    int _max_clouds_queue = 5;
+    int _max_clouds_queue;
 
     // Resolution in meters
-    float _downsample_resolution = 0.05f;
+    float _downsample_resolution;
 
     // Transform from the LiDAR to the base_link frame
     Pose3 _base_link_T_lidar;
 
     // 
-    size_t _count_callbacks_after_published = 0;
-
+    size_t _count_callbacks_after_published;
+    
     //
-    size_t _publish_every_N_callbacks = 3;
+    size_t _total_scans_received;
+    
+    //
+    size_t _publish_every_N_callbacks;
 
-    size_t _total_scans_received = 0;
+    float _min_synchronization_time_diff_sec;
+
 
     // ROS node handler
     std::shared_ptr< ros::NodeHandle > _node_handle_ptr;
@@ -163,7 +178,13 @@ private:
     // Timestamp of the last synchronized pair's point cloud.
     ros::Time _timestamp_curr;
 
+    // 
     string _scans_topic;
+
+    //
+    string _out_map_local_topic;
+
+    //
     string _odometry_topic;
 
     // Manual synchronization
@@ -178,7 +199,7 @@ private:
     {
         float time_diff = abs( (scan_msg.header.stamp - _last_odom_msg.header.stamp).toSec() );
         // Run the synchronized callback
-        if (time_diff < 1e-3)
+        if (time_diff < _min_synchronization_time_diff_sec)
         {
             this->callbackSynchronizedScan(scan_msg, _last_odom_msg);
         }
@@ -193,7 +214,7 @@ private:
     {
         float time_diff = abs( (_last_scan_msg.header.stamp - odom_msg.header.stamp).toSec() );
         // Run the synchronized callback
-        if (time_diff < 1e-3)
+        if (time_diff < _min_synchronization_time_diff_sec)
         {
             this->callbackSynchronizedScan(_last_scan_msg, odom_msg);
         }

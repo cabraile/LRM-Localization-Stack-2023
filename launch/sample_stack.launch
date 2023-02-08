@@ -61,6 +61,7 @@
 
 
     <node pkg="lrm_localization_stack" type="mapping_node" name="mapping_node" output="screen">
+        <rosparam file="$(find lrm_localization_stack)/config/mapping.yaml"/>
     </node>
 
 </launch>
