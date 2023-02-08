@@ -10,9 +10,6 @@
 #include <gtsam/geometry/Pose3.h>
 
 #include <ros/ros.h>
-#include <message_filters/sync_policies/approximate_time.h>
-#include <message_filters/subscriber.h>
-#include <message_filters/synchronizer.h>
 #include <nav_msgs/Odometry.h>
 #include <sensor_msgs/PointCloud2.h>
 #include <tf/transform_listener.h>
@@ -22,10 +19,7 @@
 // Type Definitions and namespaces
 using pcl::PointCloud;
 using gtsam::Pose3;
-using namespace message_filters;
 typedef pcl::PointXYZ PointT;
-typedef sync_policies::ApproximateTime<sensor_msgs::PointCloud2, nav_msgs::Odometry> SyncPolicyT;
-typedef Synchronizer<SyncPolicyT> SyncT;
 
 class MappingNode
 {
@@ -36,7 +30,6 @@ public:
         _node_handle_ptr = std::shared_ptr<ros::NodeHandle>(new ros::NodeHandle("~"));
         this->loadROSParams();
 
-        _count_callbacks_after_published = 0;
         _total_scans_received = 0;
     }
 
@@ -48,11 +41,6 @@ public:
         _node_handle_ptr->getParam("mapping/max_clouds_queue",_max_clouds_queue);
         _node_handle_ptr->getParam("mapping/downsample_resolution",_downsample_resolution);
         _node_handle_ptr->getParam("communication/min_synchronization_time_diff_sec",_min_synchronization_time_diff_sec);
-        
-        // Auxiliary variable for loading size_t args
-        int aux;
-        _node_handle_ptr->getParam("communication/publish_every_N_callbacks",aux);
-        _publish_every_N_callbacks = aux;
     }
 
     void spin()
@@ -73,44 +61,21 @@ public:
             catch (tf::TransformException exception)
             {
                 ROS_ERROR("%s",exception.what());
-                ros::Duration(1.0).sleep();
+                ros::Duration(0.1).sleep();
             }
         }
         _base_link_T_lidar = lrm::fromTFTransformToGTSAMPose(tf_base_link_T_lidar);
 
         // Instantiate synchronized subscribers
         ROS_DEBUG("[mapping_node.cpp] Starting synchronized subscriber");
-        // Instantiate publishers
-        ros::Publisher publisher_local_window = _node_handle_ptr->advertise<sensor_msgs::PointCloud2>(_out_map_local_topic, 10);
+        // Start ROS communication
+        _publisher_local_window = _node_handle_ptr->advertise<sensor_msgs::PointCloud2>(_out_map_local_topic, 10);
         ros::Subscriber subscriber_scan = _node_handle_ptr->subscribe(_scans_topic, 100, &MappingNode::callbackScan, this);
         ros::Subscriber subscriber_odometry = _node_handle_ptr->subscribe(_odometry_topic, 100, &MappingNode::callbackOdometry, this);
 
         // Spin
         ROS_DEBUG("[mapping_node.cpp] Started loop");
-        while(ros::ok())
-        {
-            // Checks if the cloud can be published
-            if(_count_callbacks_after_published > _publish_every_N_callbacks)
-            {
-                // Builds the local window
-                PointCloud<PointT>::Ptr local_window = this->buildLocalMap();
-
-                ROS_WARN("[mapping_node.cpp] Publishing");
-                // Publish
-                sensor_msgs::PointCloud2 local_window_msg;
-                pcl::toROSMsg(*local_window, local_window_msg);
-                local_window_msg.header.frame_id = "velodyne";
-                local_window_msg.header.stamp = _timestamp_curr;
-                local_window_msg.header.seq = _total_scans_received;
-                publisher_local_window.publish(local_window_msg);
-
-                // Resets the condition counter
-                _count_callbacks_after_published = 0;
-            }
-
-            ros::spinOnce();
-        }
-
+        ros::spin();
     }
 
     // @brief Registers the point clouds w.r.t. the last point cloud.
@@ -148,6 +113,9 @@ public:
     }
 
 private:
+
+    ros::Publisher _publisher_local_window;
+
     // Queue of point clouds and their origin_T_lidar transforms' pairs
     std::deque<std::pair<Pose3, PointCloud<PointT>::Ptr>> _cloud_pair_queue;
 
@@ -160,14 +128,9 @@ private:
     // Transform from the LiDAR to the base_link frame
     Pose3 _base_link_T_lidar;
 
-    // 
-    size_t _count_callbacks_after_published;
-    
     //
     size_t _total_scans_received;
     
-    //
-    size_t _publish_every_N_callbacks;
 
     float _min_synchronization_time_diff_sec;
 
@@ -187,8 +150,10 @@ private:
     //
     string _odometry_topic;
 
-    // Manual synchronization
+    // Last scan message for synchronization
     sensor_msgs::PointCloud2 _last_scan_msg;
+
+    // Last odometry message for synchronization
     nav_msgs::Odometry _last_odom_msg;
 
     ////////////////////////
@@ -257,13 +222,31 @@ private:
         // Updates the timestamp
         _timestamp_curr = scan_msg.header.stamp;
 
-        // Increments the counter for publishing
-        _count_callbacks_after_published++;
-
         // Increments the number of scans received
         _total_scans_received++;
+
+        // Publishes the local window
+        this->publishLocalMap();
     }
-    
+
+    ////////////////////////
+    // Publishers
+    ////////////////////////
+
+    void publishLocalMap()
+    {
+        // Builds the local window
+        PointCloud<PointT>::Ptr local_window = this->buildLocalMap();
+        ROS_WARN("[mapping_node.cpp] Publishing the local window");
+
+        // Publish local window
+        sensor_msgs::PointCloud2 local_window_msg;
+        pcl::toROSMsg(*local_window, local_window_msg);
+        local_window_msg.header.frame_id = "velodyne";
+        local_window_msg.header.stamp = _timestamp_curr;
+        local_window_msg.header.seq = _total_scans_received;
+        _publisher_local_window.publish(local_window_msg);
+    }
 
 };
 
