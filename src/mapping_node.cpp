@@ -179,13 +179,13 @@ private:
     ros::Time _timestamp_curr;
 
     // 
-    string _scans_topic;
+    std::string _scans_topic;
 
     //
-    string _out_map_local_topic;
+    std::string _out_map_local_topic;
 
     //
-    string _odometry_topic;
+    std::string _odometry_topic;
 
     // Manual synchronization
     sensor_msgs::PointCloud2 _last_scan_msg;
