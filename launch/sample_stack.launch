@@ -2,7 +2,7 @@
 <launch>
 
     <!-- Args -->
-    <arg name="publish_stereo_cloud" default="false"/>
+    <arg name="publish_stereo_cloud" default="true"/>
     <arg name="enable_rviz" default="true"/>
     <arg name="from_bag" default="true"/>
     
@@ -17,7 +17,7 @@
 
     <!-- Visual odometry -->
     <arg name="visual_odometry_topic"   default="/localization/odometry/visual"/>
-    <node pkg="rtabmap_ros" type="stereo_odometry" name="stereo_odometry" clear_params="true" args="" launch-prefix="">
+    <node pkg="rtabmap_odom" type="stereo_odometry" name="stereo_odometry" clear_params="true" args="" launch-prefix="">
         <remap from="left/image_rect"        to="/carina/sensor/camera/left/image_rect_color"/>
         <remap from="right/image_rect"       to="/carina/sensor/camera/right/image_rect_color"/>
         <remap from="left/camera_info"       to="/carina/sensor/camera/left/camera_info"/>

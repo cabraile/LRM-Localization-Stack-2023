@@ -64,6 +64,12 @@ class FixToUTMPoseNode:
   def shutdown_cb(self, msg):
     if msg.data:
       print ("Bye!")
+      del self.subscriber_gps 
+      del self.subscriber_imu 
+      del self.publisher 
+      del self.time_synchronizer 
+
+      del self.shutdown_sub
       rospy.signal_shutdown("finished route") 
       
 if __name__ == "__main__":
