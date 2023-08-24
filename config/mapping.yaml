@@ -10,5 +10,4 @@ mapping:
   downsample_resolution: 0.2
 
 communication:
-  min_synchronization_time_diff_sec: 0.001
-  publish_every_N_callbacks: 3
+  min_synchronization_time_diff_sec: 0.02
