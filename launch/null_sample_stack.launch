@@ -38,7 +38,7 @@
         <param name="max_update_rate"             type="double" value="0"/>
         <param name="keep_color"                  type="bool"   value="true"/>
     </node>
-    <node if="$(arg publish_stereo_cloud)" pkg="nodelet" type="nodelet" name="stereo_cloud_publisher" args="standalone rtabmap_ros/point_cloud_xyzrgb" clear_params="true">
+    <node if="$(arg publish_stereo_cloud)" pkg="nodelet" type="nodelet" name="stereo_cloud_publisher" args="standalone rtabmap_util/point_cloud_xyzrgb" clear_params="true">
         <remap from="left/image"        to="/carina/sensor/camera/left/image_rect_color"/>
         <remap from="right/image"       to="/carina/sensor/camera/right/image_rect_color"/>
         <remap from="left/camera_info"  to="/carina/sensor/camera/left/camera_info"/>
